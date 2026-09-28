@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Gplanchat\Durable\Activity\PayloadToContractMethodInvoker;
 use Gplanchat\Durable\Handler\FireWorkflowTimersHandler;
 use Gplanchat\Durable\Handler\ResumeWorkflowHandler;
+use Gplanchat\Durable\Observation\RunDashboard;
 use Gplanchat\Durable\Timer\TimerWakeDelayCalculator;
 use Gplanchat\Durable\Workflow\AsyncChildWorkflowFailureProjector;
 use Rector\Config\RectorConfig;
@@ -69,6 +70,11 @@ return RectorConfig::configure()
         // core, under the name that pairs it with `AsNexusServiceHandler`. It is **read by a
         // compiler pass**, so the compiled container holds on to it.
         'Gplanchat\Durable\Bundle\Attribute\AsDurableActivity' => 'Gplanchat\Durable\Attribute\AsActivityHandler',
+
+        // 0.1.0-alpha9 — the Sylius plugin's view model moves to the core, where the Magento
+        // screen reads it too (DUR049). Another move between packages: `gplanchat/durable-plugin`
+        // to `gplanchat/durable`. Clear the container cache after it (#350).
+        'Gplanchat\Durable\Plugin\Dashboard\RunDashboardView' => RunDashboard::class,
     ])
     // 0.1.0-beta1 — `WorkflowClientInterface::signal()` takes a request id and `update()` an update
     // id, so that a redelivered call reaches the cluster as the same one (#333). An implementation
