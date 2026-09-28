@@ -15,7 +15,7 @@
     "type": "library",
     "require": {
         "php": ">=8.2",
-        "gplanchat/durable": "self.version",
+        "gplanchat/durable": "^0.1.0-beta1",
         "rector/rector": "^2.0"
     },
     "require-dev": {
