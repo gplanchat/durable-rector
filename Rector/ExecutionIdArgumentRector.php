@@ -11,7 +11,9 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name\FullyQualified;
+use PHPStan\Analyser\Scope;
 use PHPStan\Type\ObjectType;
+use Rector\NodeTypeResolver\Node\AttributeKey;
 use Rector\Rector\AbstractRector;
 use Symplify\RuleDocGenerator\ValueObject\CodeSample\CodeSample;
 use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
@@ -23,7 +25,8 @@ use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
  * It only touches an argument it can prove is a string, on a receiver it can prove is one of the
  * ports. A named argument, an unpacked one, or one whose type is unknown is left as it is: the type
  * checker names what is left. It does not migrate the code that consumes a return value that became
- * an `ExecutionId`, nor a class that implements a port — UPGRADE.md describes both by hand.
+ * an `ExecutionId`, nor any call made inside a class that implements a port — UPGRADE.md describes
+ * both by hand.
  */
 final class ExecutionIdArgumentRector extends AbstractRector
 {
@@ -78,7 +81,7 @@ final class ExecutionIdArgumentRector extends AbstractRector
         }
 
         $method = $this->getName($node->name);
-        if (null === $method) {
+        if (null === $method || $this->isInsideAnImplementation($node)) {
             return null;
         }
 
@@ -102,5 +105,26 @@ final class ExecutionIdArgumentRector extends AbstractRector
         }
 
         return $changed ? $node : null;
+    }
+
+    /**
+     * A class that implements a port is migrated by hand (UPGRADE): its parameters become
+     * ExecutionId, and a wrap written now would turn into fromString(ExecutionId) then.
+     */
+    private function isInsideAnImplementation(Node $node): bool
+    {
+        $class = $node->getAttribute(AttributeKey::SCOPE);
+        $class = $class instanceof Scope ? $class->getClassReflection() : null;
+        if (null === $class) {
+            return false;
+        }
+
+        foreach (array_keys(self::PORTS) as $port) {
+            if ($class->implementsInterface($port)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
