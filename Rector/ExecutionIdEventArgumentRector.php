@@ -27,7 +27,8 @@ use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 final class ExecutionIdEventArgumentRector extends AbstractRector
 {
     /**
-     * Event => its static factories whose first argument is the execution id.
+     * Class => its static factories whose first argument is the execution id: the events' own,
+     * and the two helpers that build a failure event.
      */
     public const FACTORIES = [
         'Gplanchat\Durable\Event\ActivityCatastrophicFailure' => ['fromStoredPayload', 'forThrowable'],
@@ -38,6 +39,8 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
             'unhandledDeclaredActivityFailure', 'unhandledActivitySuperseded', 'deadlineExceeded',
             'unhandledCatastrophicActivity', 'workflowHandlerFailure', 'terminatedByParent',
         ],
+        'Gplanchat\Durable\Failure\WorkflowFailureClassifier' => ['classify'],
+        'Gplanchat\Durable\Failure\ActivityFailureEventFactory' => ['fromActivityThrowable'],
     ];
 
     public function getRuleDefinition(): RuleDefinition
@@ -65,12 +68,9 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
         }
 
         $class = $this->getName($node->class);
-        if (!is_subclass_of($class, Event::class)) {
-            return null;
-        }
-
         $applies = $node instanceof New_
-            || \in_array($this->getName($node->name), self::FACTORIES[$class] ?? [], true);
+            ? is_subclass_of($class, Event::class)
+            : \in_array($this->getName($node->name), self::FACTORIES[$class] ?? [], true);
         if (!$applies) {
             return null;
         }
