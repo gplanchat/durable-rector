@@ -6,6 +6,7 @@ use Gplanchat\Durable\Activity\PayloadToContractMethodInvoker;
 use Gplanchat\Durable\Handler\FireWorkflowTimersHandler;
 use Gplanchat\Durable\Handler\ResumeWorkflowHandler;
 use Gplanchat\Durable\Observation\RunDashboard;
+use Gplanchat\Durable\Rector\Rector\ExecutionIdArgumentRector;
 use Gplanchat\Durable\Timer\TimerWakeDelayCalculator;
 use Gplanchat\Durable\Workflow\AsyncChildWorkflowFailureProjector;
 use Rector\Config\RectorConfig;
@@ -80,4 +81,7 @@ return RectorConfig::configure()
     // id, so that a redelivered call reaches the cluster as the same one (#333). An implementation
     // missing them is a fatal error at load time; this rule adds them, `?string ... = null`, to every
     // class whose parent or interface declares more parameters than it does.
-    ->withRules([AddParamBasedOnParentClassMethodRector::class]);
+    // Unreleased — the ports take an `ExecutionId` rather than a string (#638). This rule wraps the
+    // string arguments it can prove; a class that implements a port, and code that reads an id a
+    // port now returns, are migrated by hand (UPGRADE.md).
+    ->withRules([AddParamBasedOnParentClassMethodRector::class, ExecutionIdArgumentRector::class]);
