@@ -8,6 +8,7 @@ use Gplanchat\Durable\ExecutionId;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name\FullyQualified;
 use PHPStan\Type\ObjectType;
@@ -65,12 +66,12 @@ final class ExecutionIdArgumentRector extends AbstractRector
 
     public function getNodeTypes(): array
     {
-        return [MethodCall::class];
+        return [MethodCall::class, NullsafeMethodCall::class];
     }
 
     public function refactor(Node $node): ?Node
     {
-        \assert($node instanceof MethodCall);
+        \assert($node instanceof MethodCall || $node instanceof NullsafeMethodCall);
 
         if ($node->isFirstClassCallable()) {
             return null;
