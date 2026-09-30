@@ -52,6 +52,7 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
         'Gplanchat\Durable\ExecutionContext',
         'Gplanchat\Durable\Store\EventStoreCommandBuffer',
         'Gplanchat\Bridge\Temporal\Store\TemporalEventConverter',
+        'Gplanchat\Bridge\Temporal\Worker\TemporalWorkflowCommandBuffer',
     ];
 
     public function getRuleDefinition(): RuleDefinition
