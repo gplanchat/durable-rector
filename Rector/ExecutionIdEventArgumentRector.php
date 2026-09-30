@@ -20,7 +20,9 @@ use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
  * Wraps a string execution id in `ExecutionId::fromString()` where a journal event is built from
  * one (#682): the constructor of any class implementing `Event`, and the named factories below.
  *
- * Only the first argument moves, the execution the event belongs to. Like
+ * Only the first argument moves, the execution the event belongs to, and only once the
+ * reflected parameter is typed `ExecutionId`: a custom event its author has not retyped yet is
+ * left alone. Like
  * {@see ExecutionIdArgumentRector}, it touches an argument it can prove is a string, and leaves a
  * named, unpacked, nullable or untyped one for the type checker to name.
  */
@@ -68,10 +70,11 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
         }
 
         $class = $this->getName($node->class);
+        $method = $node instanceof New_ ? '__construct' : $this->getName($node->name);
         $applies = $node instanceof New_
             ? is_subclass_of($class, Event::class)
-            : \in_array($this->getName($node->name), self::FACTORIES[$class] ?? [], true);
-        if (!$applies) {
+            : \in_array($method, self::FACTORIES[$class] ?? [], true);
+        if (!$applies || null === $method || !self::firstParameterTakesAnExecutionId($class, $method)) {
             return null;
         }
 
@@ -83,5 +86,20 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
         $arg->value = new StaticCall(new FullyQualified(ExecutionId::class), 'fromString', [new Arg($arg->value)]);
 
         return $node;
+    }
+
+    /**
+     * A custom event is retyped by hand (UPGRADE): until its first parameter takes an
+     * ExecutionId, a wrap would be a TypeError.
+     */
+    private static function firstParameterTakesAnExecutionId(string $class, string $method): bool
+    {
+        if (!method_exists($class, $method)) {
+            return false;
+        }
+        $first = (new \ReflectionMethod($class, $method))->getParameters()[0] ?? null;
+        $type = $first?->getType();
+
+        return $type instanceof \ReflectionNamedType && ExecutionId::class === $type->getName();
     }
 }
