@@ -18,11 +18,12 @@ use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 
 /**
  * Wraps a string execution id in `ExecutionId::fromString()` where a journal event is built from
- * one (#682): the constructor of any class implementing `Event`, and the named factories below.
+ * one (#682): the constructor of any class implementing `Event`, the named factories below, and
+ * the constructors of the classes that open a pass.
  *
- * Only the first argument moves, the execution the event belongs to, and only once the
- * reflected parameter is typed `ExecutionId`: a custom event its author has not retyped yet is
- * left alone. Like
+ * Every positional argument moves whose reflected parameter accepts an `ExecutionId`: the
+ * execution the event belongs to, and the other one it names (a child, a parent, the next run).
+ * A custom event its author has not retyped yet is left alone. Like
  * {@see ExecutionIdArgumentRector}, it touches an argument it can prove is a string, and leaves a
  * named, unpacked, nullable or untyped one for the type checker to name.
  */
@@ -43,6 +44,14 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
         ],
         'Gplanchat\Durable\Failure\WorkflowFailureClassifier' => ['classify'],
         'Gplanchat\Durable\Failure\ActivityFailureEventFactory' => ['fromActivityThrowable'],
+        'Gplanchat\Bridge\Temporal\Store\TemporalEventConverter' => ['forHistory'],
+    ];
+
+    /** Classes other than events whose constructor takes the execution id. */
+    public const CONSTRUCTORS = [
+        'Gplanchat\Durable\ExecutionContext',
+        'Gplanchat\Durable\Store\EventStoreCommandBuffer',
+        'Gplanchat\Bridge\Temporal\Store\TemporalEventConverter',
     ];
 
     public function getRuleDefinition(): RuleDefinition
@@ -72,34 +81,41 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
         $class = $this->getName($node->class);
         $method = $node instanceof New_ ? '__construct' : $this->getName($node->name);
         $applies = $node instanceof New_
-            ? is_subclass_of($class, Event::class)
+            ? is_subclass_of($class, Event::class) || \in_array($class, self::CONSTRUCTORS, true)
             : \in_array($method, self::FACTORIES[$class] ?? [], true);
-        if (!$applies || null === $method || !self::firstParameterTakesAnExecutionId($class, $method)) {
+        if (!$applies || null === $method || !method_exists($class, $method)) {
             return null;
         }
 
-        $arg = $node->args[0] ?? null;
-        if (!$arg instanceof Arg || null !== $arg->name || $arg->unpack || !$this->getType($arg->value)->isString()->yes()) {
-            return null;
+        $changed = false;
+        foreach ((new \ReflectionMethod($class, $method))->getParameters() as $position => $parameter) {
+            $arg = $node->args[$position] ?? null;
+            if (!$arg instanceof Arg || null !== $arg->name || $arg->unpack || !self::takesAnExecutionId($parameter)
+                || !$this->getType($arg->value)->isString()->yes()) {
+                continue;
+            }
+
+            $arg->value = new StaticCall(new FullyQualified(ExecutionId::class), 'fromString', [new Arg($arg->value)]);
+            $changed = true;
         }
 
-        $arg->value = new StaticCall(new FullyQualified(ExecutionId::class), 'fromString', [new Arg($arg->value)]);
-
-        return $node;
+        return $changed ? $node : null;
     }
 
     /**
-     * A custom event is retyped by hand (UPGRADE): until its first parameter takes an
-     * ExecutionId, a wrap would be a TypeError.
+     * A custom event is retyped by hand (UPGRADE): until its parameter accepts an ExecutionId, a
+     * wrap would be a TypeError.
      */
-    private static function firstParameterTakesAnExecutionId(string $class, string $method): bool
+    private static function takesAnExecutionId(\ReflectionParameter $parameter): bool
     {
-        if (!method_exists($class, $method)) {
-            return false;
+        $type = $parameter->getType();
+        $types = $type instanceof \ReflectionUnionType ? $type->getTypes() : [$type];
+        foreach ($types as $one) {
+            if ($one instanceof \ReflectionNamedType && ExecutionId::class === $one->getName()) {
+                return true;
+            }
         }
-        $first = (new \ReflectionMethod($class, $method))->getParameters()[0] ?? null;
-        $type = $first?->getType();
 
-        return $type instanceof \ReflectionNamedType && ExecutionId::class === $type->getName();
+        return false;
     }
 }
