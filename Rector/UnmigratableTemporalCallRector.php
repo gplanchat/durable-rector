@@ -41,6 +41,9 @@ final class UnmigratableTemporalCallRector extends AbstractRector
 {
     public const MARKER = 'durable-rector:';
 
+    /** The getVersion() marker written before the rewrite existed. */
+    private const OLD_VERSION_MARKER = 'Workflow::getVersion() — no equivalent yet';
+
     private const SDK_WORKFLOW_FACADE = 'Temporal\Workflow';
     private const SDK_PROMISE_FACADE = 'Temporal\Promise';
 
@@ -168,7 +171,7 @@ AFTER,
             return null;
         }
 
-        $comments = $node->getComments();
+        $comments = self::withoutOldVersionMarker($node->getComments(), $findings);
         foreach ($findings as $finding) {
             $comments[] = new Comment('// ' . self::MARKER . ' ' . $finding);
         }
@@ -185,6 +188,28 @@ AFTER,
      * the construct. The explanation after it can differ: a marker written by an earlier run keeps
      * its text (#914). A different finding gets its own marker next to the first one (#917).
      */
+    /**
+     * Before #894, every getVersion() call carried "no equivalent yet". Where a call is still
+     * unmapped, its new marker replaces that one rather than sitting under it.
+     *
+     * @param Comment[] $comments
+     * @param string[]  $findings
+     *
+     * @return Comment[]
+     */
+    private static function withoutOldVersionMarker(array $comments, array $findings): array
+    {
+        $reportsVersion = [] !== array_filter($findings, static fn(string $finding): bool => str_starts_with($finding, 'Workflow::getVersion() '));
+        if (!$reportsVersion) {
+            return $comments;
+        }
+
+        return array_values(array_filter(
+            $comments,
+            static fn(Comment $comment): bool => !str_contains($comment->getText(), self::MARKER . ' ' . self::OLD_VERSION_MARKER),
+        ));
+    }
+
     public static function isMarked(Node $node, string $finding): bool
     {
         $separator = strpos($finding, ' — ');
