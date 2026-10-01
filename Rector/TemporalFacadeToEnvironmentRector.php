@@ -316,6 +316,12 @@ AFTER,
             if ('awaitWithTimeout' === $name) {
                 return $this->rewriteAwaitWithTimeout($value);
             }
+
+            if ('getVersion' === $name) {
+                // The SDK hands back a promise of the version, version() the int itself: the yield
+                // goes, and nothing is awaited. Another arity is left as written and reported.
+                return 3 === \count($value->args) ? $this->environmentCall('version', $value->args) : null;
+            }
         }
 
         return $this->environmentCall('await', [new Arg($value)]);

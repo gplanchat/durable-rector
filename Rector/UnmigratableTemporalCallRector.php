@@ -6,8 +6,10 @@ namespace Gplanchat\Durable\Rector\Rector;
 
 use PhpParser\Comment;
 use PhpParser\Node;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Yield_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\ClassLike;
@@ -64,11 +66,10 @@ final class UnmigratableTemporalCallRector extends AbstractRector
      */
     private const REWRITABLE = [
         'newActivityStub', 'newChildWorkflowStub', 'await', 'awaitWithTimeout',
-        'timer', 'sideEffect', 'continueAsNew',
+        'timer', 'sideEffect', 'continueAsNew', 'getVersion',
     ];
 
     private const REASONS = [
-        'getVersion' => 'no equivalent yet — workflow versioning is an open change, and a run that reached this marker cannot migrate before it lands',
         'now' => 'sideEffect() is the equivalent, and it changes when the value is captured — a review, not a rename',
         'uuid' => 'sideEffect() is the equivalent, and it changes when the value is captured — a review, not a rename',
         'uuid4' => 'sideEffect() is the equivalent, and it changes when the value is captured — a review, not a rename',
@@ -123,11 +124,11 @@ final class UnmigratableTemporalCallRector extends AbstractRector
             'Comment every Temporal SDK call that has no counterpart in Durable, changing nothing else',
             [new CodeSample(
                 <<<'BEFORE'
-$version = yield Workflow::getVersion('change', 1, 2);
+yield Workflow::runLocked($mutex, fn () => null);
 BEFORE,
                 <<<'AFTER'
-// durable-rector: Workflow::getVersion() — no equivalent yet — workflow versioning is an open change
-$version = yield Workflow::getVersion('change', 1, 2);
+// durable-rector: Workflow::runLocked() — no mutex; a workflow is single-threaded here, so what the lock protected may not need protecting
+yield Workflow::runLocked($mutex, fn () => null);
 AFTER,
             )],
         );
@@ -193,11 +194,27 @@ AFTER,
             }
         }
 
-        $this->traverseNodesWithCallable($statement, static function (Node $node) use ($statement, &$findings): ?int {
+        // The getVersion() calls a yield waits on: the only ones version() answers, since it returns
+        // the int where the SDK returns a promise of it.
+        $yielded = [];
+
+        $this->traverseNodesWithCallable($statement, static function (Node $node) use ($statement, &$findings, &$yielded): ?int {
             if ($node instanceof Stmt && $node !== $statement) {
                 // A nested statement reports on its own line; stopping here is what keeps the
                 // marker on the innermost statement rather than on every block above it.
                 return NodeVisitor::DONT_TRAVERSE_CHILDREN;
+            }
+
+            if ($node instanceof Yield_ && null !== $node->value) {
+                $yielded[spl_object_id($node->value)] = true;
+
+                return null;
+            }
+
+            if ($node instanceof ClassConstFetch && self::isDefaultVersion($node)) {
+                $findings[] = 'Workflow::DEFAULT_VERSION has no rename here; ChangePoint::DEFAULT_VERSION is the same -1, and once temporal/sdk is removed this reference no longer resolves';
+
+                return null;
             }
 
             if ($node instanceof Node\Name) {
@@ -243,6 +260,16 @@ AFTER,
             }
 
             $name = $node->name->toString();
+
+            if ('getVersion' === $name) {
+                $finding = self::versionFinding($node, isset($yielded[spl_object_id($node)]));
+                if (null !== $finding) {
+                    $findings[] = $finding;
+                }
+
+                return null;
+            }
+
             if (\in_array($name, self::REWRITABLE, true) && !self::isAwaitBeyondOneCondition($node, $name)) {
                 return null;
             }
@@ -330,6 +357,34 @@ AFTER,
             'awaitWithTimeout' => 2 !== \count($call->args),
             default => false,
         };
+    }
+
+    /**
+     * The getVersion() calls TemporalFacadeToEnvironmentRector leaves as they are: another arity, or
+     * a promise not waited on where it is made.
+     */
+    private static function versionFinding(StaticCall $call, bool $yielded): ?string
+    {
+        if (3 !== \count($call->args)) {
+            return \sprintf(
+                'Workflow::getVersion() with %d arguments; version() takes a change id, a minimum and a maximum, write the call by hand',
+                \count($call->args),
+            );
+        }
+
+        if (!$yielded) {
+            return 'Workflow::getVersion() not yielded; it returns a promise there and version() returns the int, rewrite the code that consumes it by hand';
+        }
+
+        return null;
+    }
+
+    private static function isDefaultVersion(ClassConstFetch $fetch): bool
+    {
+        return $fetch->class instanceof Node\Name
+            && self::SDK_WORKFLOW_FACADE === $fetch->class->toString()
+            && $fetch->name instanceof Node\Identifier
+            && 'DEFAULT_VERSION' === $fetch->name->toString();
     }
 
     private static function reasonFor(string $name): string
