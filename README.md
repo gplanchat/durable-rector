@@ -162,10 +162,11 @@ the result would read as migrated and could not run.
 It marks two more kinds of statement, for the same reason:
 
 - a reference to `ApplicationFailure`, `ServerFailure`, `TerminatedFailure` or `TimeoutFailure`
-  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call, a `::class`, a parameter type
-  or a return type). Durable has no counterpart for these four, and once `temporal/sdk` is removed
-  the reference no longer resolves. A `catch` is marked above its `try`, a parameter or return type
-  above its method or function; the `use` import is not marked.
+  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call, a `::class`, a parameter type,
+  a return type, or the `extends` of a named class). Durable has no counterpart for these four, and
+  once `temporal/sdk` is removed the reference no longer resolves. A `catch` is marked above its
+  `try`, a parameter or return type above its method or function, an `extends` above its class; the
+  `use` import is not marked.
 - a `Promise::` call that the execution-model half does not rewrite: any method other than `all`,
   `any` and `some`, any of those three called with no argument, and `some()` called without a count.
 
@@ -201,7 +202,9 @@ These constructs carry no `durable-rector:` comment after a run. Check them by h
 - the client side: code that starts, signals or queries a workflow through the SDK client;
 - the SDK workflow attribute on a class rather than on an interface: no `#[AsWorkflow]` is
   written, because both rules read that attribute only on the interfaces a class implements;
-- an interceptor: no rule matches it.
+- an interceptor: no rule matches it;
+- an anonymous class that extends `ApplicationFailure`, `ServerFailure`, `TerminatedFailure` or
+  `TimeoutFailure`, such as `throw new class extends ApplicationFailure {}`.
 
 ## Development
 

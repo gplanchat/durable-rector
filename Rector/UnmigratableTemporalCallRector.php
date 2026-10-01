@@ -10,6 +10,7 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Catch_;
+use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Finally_;
@@ -142,21 +143,24 @@ AFTER,
     {
         \assert($node instanceof Stmt);
 
-        if ($node instanceof ClassLike || $node instanceof Catch_ || $node instanceof Finally_) {
+        if ($node instanceof Class_ && null !== $node->name && null !== $node->extends) {
+            // A class reports only the failure it extends; its members report for themselves. An
+            // anonymous class is not marked; the README lists it.
+            $findings = array_filter([self::failureFinding($node->extends)]);
+        } elseif ($node instanceof ClassLike || $node instanceof Catch_ || $node instanceof Finally_) {
             // Containers: their statements report for themselves, and marking both would say it twice.
             // A catch clause reports on its `try`, the statement a comment can sit above.
             return null;
-        }
-
-        if ($node instanceof Use_ || $node instanceof GroupUse) {
+        } elseif ($node instanceof Use_ || $node instanceof GroupUse) {
             // An import is not a use: the statements that reference the class carry the marker.
             return null;
+        } elseif ($node instanceof ClassMethod || $node instanceof Function_) {
+            // A method or a function reports only its signature types; its body reports for itself.
+            $findings = $this->signatureFindings($node);
+        } else {
+            $findings = $this->findings($node);
         }
 
-        // A method or a function reports only its signature types; its body reports for itself.
-        $findings = $node instanceof ClassMethod || $node instanceof Function_
-            ? $this->signatureFindings($node)
-            : $this->findings($node);
         if ([] === $findings) {
             return null;
         }
