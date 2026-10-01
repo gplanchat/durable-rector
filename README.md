@@ -68,17 +68,17 @@ Both engines derive a type name, and **they derive it differently**:
 
 - The SDK's activity type is `prefix . (name ?? methodName)`: one concatenation, no separator
   inserted. Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name` when the contract name
-  is not empty, and `AsActivityMethod::$name` alone when it is empty. The rule carries over two
-  prefixes: the empty one, and a single segment ending in a dot (`'Order.'` becomes
-  `#[AsActivity(name: 'Order')]`). **On any other prefix, this rule changes no attribute and adds a
-  `durable-rector:` marker above the interface.** That covers three cases:
+  is not empty, and `AsActivityMethod::$name` alone when it is empty. The rule carries over the
+  empty prefix and any literal prefix ending in a dot with something before it: `'Order.'` becomes
+  `#[AsActivity(name: 'Order')]`, `'Billing.Order.'` becomes `#[AsActivity(name: 'Billing.Order')]`,
+  and both engines name the activity `Billing.Order.charge`. **On any other prefix, this rule
+  changes no attribute and adds a `durable-rector:` marker above the interface.** That covers three
+  cases:
   - a computed prefix (a constant, a concatenation): the rule reads a prefix only when it is a
     string literal;
   - a prefix that does not end in a dot (`'Order'`): the SDK type of `charge()` is `Ordercharge`,
     and a non-empty contract name always adds a dot before the method name;
-  - a prefix with another dot before the last one (`'Billing.Order.'`): both engines would name the
-    activity `Billing.Order.charge`, but the rule converts a single segment only, so it marks this
-    prefix too.
+  - the prefix `'.'` alone: the SDK type is `.charge`, and an empty contract name gives `charge`.
 
   The SDK attribute stays in place rather than rename an activity that has runs in flight. A method
   whose SDK `name:` is not a string literal cannot get its `#[AsActivityMethod]`, so the whole
@@ -162,10 +162,10 @@ the result would read as migrated and could not run.
 It marks two more kinds of statement, for the same reason:
 
 - a reference to `ApplicationFailure`, `ServerFailure`, `TerminatedFailure` or `TimeoutFailure`
-  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call, a `::class` or a parameter
-  type). Durable has no counterpart for these four, so a `catch` on one of them never matches after
-  the migration. A `catch` is marked above its `try`, a parameter type above its method or function;
-  the `use` import is not marked.
+  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call, a `::class`, a parameter type
+  or a return type). Durable has no counterpart for these four, and once `temporal/sdk` is removed
+  the reference no longer resolves. A `catch` is marked above its `try`, a parameter or return type
+  above its method or function; the `use` import is not marked.
 - a `Promise::` call that the execution-model half does not rewrite: any method other than `all`,
   `any` and `some`, any of those three called with no argument, and `some()` called without a count.
 

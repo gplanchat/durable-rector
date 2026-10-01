@@ -28,10 +28,10 @@ use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
  *
  * The SDK's type is `prefix . (AsActivityMethod::$name ?? methodName)` — one concatenation, no
  * separator inserted (`Temporal\Internal\Declaration\Reader\ActivityReader::activityName()`).
- * Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name`, and the dot is not optional
- * ({@see \Gplanchat\Durable\Activity\ActivityContractResolver}). The two agree on exactly two
- * prefixes — the empty one, and one ending in a dot — and this rule marks the rest rather than
- * rename an activity in flight.
+ * Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name`, or the method name alone when
+ * the contract name is empty ({@see \Gplanchat\Durable\Activity\ActivityContractResolver}). The
+ * two agree on the empty prefix and on one ending in a dot with something before it, and this rule
+ * marks the rest rather than rename an activity in flight.
  *
  * It also adds `#[AsActivityMethod]` to methods that carry none: every public method of an
  * `#[ActivityInterface]` is an activity for the SDK, and only an annotated one is for Durable.
