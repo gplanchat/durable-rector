@@ -58,9 +58,9 @@ and wants its `cache:clear`), is written version by version, at the root of the 
 |---|---|
 | `ActivityContractAttributesRector` | `#[ActivityInterface(prefix:)]` → `#[AsActivity(name:)]`, and every public method gets an explicit `#[AsActivityMethod(name:)]` |
 | `WorkflowClassAttributesRector` | `#[WorkflowInterface]` → `#[AsWorkflow(name:)]`, and the four method attributes (`#[AsWorkflowMethod]`, `#[AsSignalMethod]`, `#[AsQueryMethod]`, `#[AsUpdateMethod]`) are **copied from the interface onto the implementing class**, where Durable reads them |
-| `RenameClassRector` (configured) | The three SDK failures with a Durable counterpart |
+| `RenameClassRector` (configured) | The three SDK failures with a Durable counterpart. The other four are marked, see below |
 | `TemporalFacadeToEnvironmentRector` | The static facade becomes an injected `WorkflowEnvironment`, `yield` goes, and the `\Generator` return type with it |
-| `UnmigratableTemporalCallRector` | Comments every call the migration **cannot** make, and changes nothing else |
+| `UnmigratableTemporalCallRector` | Comments every call the migration **cannot** make, and every reference to an SDK failure with no counterpart, and changes nothing else |
 
 ### Why the names are the whole point
 
@@ -69,8 +69,11 @@ Both engines derive a type name, and **they derive it differently**:
 - The SDK's activity type is `prefix . (name ?? methodName)` — one concatenation, no separator
   inserted. Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name`, and the dot is not
   optional. The two agree on exactly two prefixes: the empty one, and one ending in a dot. **On any
-  other prefix this rule changes nothing** and leaves the SDK attribute in place, rather than rename
-  an activity that has runs in flight.
+  other prefix, or a prefix computed from a constant, this rule changes no attribute and adds a
+  `durable-rector:` marker above the interface.** The SDK attribute stays in place rather than
+  rename an activity that has runs in flight. A method whose SDK `name:` is not a string literal
+  cannot get its `#[AsActivityMethod]`, so the whole contract stays as it is and the marker goes
+  above that method.
 - The SDK's workflow type is `#[WorkflowMethod(name:)]` if given, Durable's `#[AsWorkflow(name:)]`;
   both are *optional*, the SDK falls back to the **interface's** short name, Durable to the
   **class's**. A class migrated without an explicit name therefore compiles, passes its tests, and
@@ -142,6 +145,15 @@ rewrites the call around them. `ActivityOptions::new()->withStartToCloseTimeout(
 counterpart in `ActivityOptions::of()` over `ActivityTimeouts` and `RetryLimit`; rewritten silently,
 the result would read as migrated and could not run.
 
+It marks two more kinds of statement, for the same reason:
+
+- a reference to `ApplicationFailure`, `ServerFailure`, `TerminatedFailure` or `TimeoutFailure`
+  (in a `catch`, a `new`, a `throw` or an `instanceof`). Durable has no counterpart for these four,
+  so a `catch` on one of them never matches after the migration. A `catch` is marked above its
+  `try`; the `use` import is not marked.
+- a `Promise::` call that the execution-model half does not rewrite: any method other than `all`,
+  `any` and `some`, any of those three called with no argument, and `some()` called without a count.
+
 Run against [`temporalio/samples-php`](https://github.com/temporalio/samples-php), the whole set
 changes **58 files** — and it reports
 coroutines (`async`, `asyncDetached`), the mutex (`runLocked`, `Mutex`), run introspection
@@ -153,13 +165,28 @@ attributes, and the options objects.
 **Write a return type.** The `\Generator` goes; nothing replaces it. Declaring what a migrated
 method returns is yours, and the contract's docblock is usually where it is written down.
 
-**Migrate the options objects, interceptors, or a Saga.** It reports them. See
+**Migrate the options objects or a Saga.** It reports them. See
 [OST004 §6](https://github.com/gplanchat/durable-dev/blob/main/documentation/ost/OST004-what-is-not-built-yet.md).
 
 **Anything with no counterpart** — it reports those rather than pretending. `Workflow::getVersion()`
 has no target at all until workflow versioning lands; `Workflow::newUntypedActivityStub()` and
 activity-by-name calls were removed on purpose
 ([DUR039](https://github.com/gplanchat/durable-dev/blob/main/documentation/adr/DUR039-workflow-authoring-surface.md)).
+
+### What it leaves unchanged without a marker
+
+These constructs carry no `durable-rector:` comment after a run. Check them by hand:
+
+- a `callable` that is not a `\Closure` passed to `Workflow::sideEffect()`: it is rewritten, and
+  throws a `TypeError` on first run;
+- a plain iterator generator inside a workflow class: its `yield` is rewritten like any other;
+- a `\Generator` return type: it is removed, and nothing records that it was there;
+- the `Temporal\Activity` facade, called from activity code (`Activity::getInfo()`,
+  `Activity::heartbeat()`);
+- the client side: code that starts, signals or queries a workflow through the SDK client;
+- the SDK workflow attribute on a class rather than on an interface: no `#[AsWorkflow]` is
+  written, because both rules read that attribute only on the interfaces a class implements;
+- an interceptor: no rule matches it.
 
 ## Development
 
