@@ -142,9 +142,7 @@ AFTER,
     {
         \assert($node instanceof Stmt);
 
-        if ($node instanceof ClassLike || $node instanceof ClassMethod || $node instanceof Function_
-            || $node instanceof Catch_ || $node instanceof Finally_
-        ) {
+        if ($node instanceof ClassLike || $node instanceof Catch_ || $node instanceof Finally_) {
             // Containers: their statements report for themselves, and marking both would say it twice.
             // A catch clause reports on its `try`, the statement a comment can sit above.
             return null;
@@ -155,7 +153,10 @@ AFTER,
             return null;
         }
 
-        $findings = $this->findings($node);
+        // A method or a function reports only its parameter types; its body reports for itself.
+        $findings = $node instanceof ClassMethod || $node instanceof Function_
+            ? $this->parameterFindings($node)
+            : $this->findings($node);
         if ([] === $findings) {
             return null;
         }
@@ -259,6 +260,30 @@ AFTER,
 
             return null;
         });
+
+        return array_values(array_unique(array_filter($findings)));
+    }
+
+    /**
+     * @return string[] one line per failure named in a parameter type, without duplicates
+     */
+    private function parameterFindings(ClassMethod|Function_ $function): array
+    {
+        $findings = [];
+        foreach ($function->params as $param) {
+            if (null === $param->type) {
+                continue;
+            }
+
+            // Nullable, union and intersection types hold their names as children.
+            $this->traverseNodesWithCallable($param->type, static function (Node $node) use (&$findings): null {
+                if ($node instanceof Node\Name) {
+                    $findings[] = self::failureFinding($node);
+                }
+
+                return null;
+            });
+        }
 
         return array_values(array_unique(array_filter($findings)));
     }
