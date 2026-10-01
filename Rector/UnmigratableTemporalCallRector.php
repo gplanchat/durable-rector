@@ -142,9 +142,7 @@ AFTER,
     {
         \assert($node instanceof Stmt);
 
-        if ($node instanceof ClassLike || $node instanceof ClassMethod || $node instanceof Function_
-            || $node instanceof Catch_ || $node instanceof Finally_
-        ) {
+        if ($node instanceof ClassLike || $node instanceof Catch_ || $node instanceof Finally_) {
             // Containers: their statements report for themselves, and marking both would say it twice.
             // A catch clause reports on its `try`, the statement a comment can sit above.
             return null;
@@ -155,7 +153,10 @@ AFTER,
             return null;
         }
 
-        $findings = $this->findings($node);
+        // A method or a function reports only its signature types; its body reports for itself.
+        $findings = $node instanceof ClassMethod || $node instanceof Function_
+            ? $this->signatureFindings($node)
+            : $this->findings($node);
         if ([] === $findings) {
             return null;
         }
@@ -263,6 +264,29 @@ AFTER,
         return array_values(array_unique(array_filter($findings)));
     }
 
+    /**
+     * @return string[] one line per failure named in a parameter or return type, without duplicates
+     */
+    private function signatureFindings(ClassMethod|Function_ $function): array
+    {
+        $types = array_map(static fn(Node\Param $param): ?Node => $param->type, $function->params);
+        $types[] = $function->returnType;
+
+        $findings = [];
+        foreach (array_filter($types) as $type) {
+            // Nullable, union and intersection types hold their names as children.
+            $this->traverseNodesWithCallable($type, static function (Node $node) use (&$findings): null {
+                if ($node instanceof Node\Name) {
+                    $findings[] = self::failureFinding($node);
+                }
+
+                return null;
+            });
+        }
+
+        return array_values(array_unique(array_filter($findings)));
+    }
+
     private static function failureFinding(Node\Name $name): ?string
     {
         if (!\in_array($name->toString(), self::FAILURES_WITHOUT_COUNTERPART, true)) {
@@ -270,7 +294,7 @@ AFTER,
         }
 
         return \sprintf(
-            '%s has no Durable counterpart — a catch on it never matches after migration; decide by hand',
+            '%s has no Durable counterpart — once temporal/sdk is removed this reference no longer resolves; decide by hand',
             $name->getLast(),
         );
     }

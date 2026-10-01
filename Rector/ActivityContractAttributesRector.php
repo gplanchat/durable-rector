@@ -28,10 +28,10 @@ use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
  *
  * The SDK's type is `prefix . (AsActivityMethod::$name ?? methodName)` — one concatenation, no
  * separator inserted (`Temporal\Internal\Declaration\Reader\ActivityReader::activityName()`).
- * Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name`, and the dot is not optional
- * ({@see \Gplanchat\Durable\Activity\ActivityContractResolver}). The two agree on exactly two
- * prefixes — the empty one, and one ending in a dot — and this rule marks the rest rather than
- * rename an activity in flight.
+ * Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name`, or the method name alone when
+ * the contract name is empty ({@see \Gplanchat\Durable\Activity\ActivityContractResolver}). The
+ * two agree on the empty prefix and on one ending in a dot with something before it, and this rule
+ * marks the rest rather than rename an activity in flight.
  *
  * It also adds `#[AsActivityMethod]` to methods that carry none: every public method of an
  * `#[ActivityInterface]` is an activity for the SDK, and only an annotated one is for Durable.
@@ -134,8 +134,9 @@ AFTER,
     }
 
     /**
-     * Durable joins with a dot it always inserts; the SDK inserts nothing. Only an empty prefix and
-     * a dot-terminated one survive the round trip unchanged.
+     * The SDK concatenates prefix and method name; Durable inserts a dot between a non-empty contract
+     * name and the method name, and uses the method name alone when the contract name is empty. Only
+     * an empty prefix and a dot-terminated one with something before the dot keep their names.
      */
     private function contractNameForPrefix(string $prefix): ?string
     {
@@ -149,7 +150,8 @@ AFTER,
 
         $name = substr($prefix, 0, -1);
 
-        return str_contains($name, '.') ? null : $name;
+        // A lone '.' would become an empty contract name, and the dot with it would be lost.
+        return '' === $name ? null : $name;
     }
 
     /**

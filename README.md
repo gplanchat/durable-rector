@@ -66,14 +66,28 @@ and wants its `cache:clear`), is written version by version, at the root of the 
 
 Both engines derive a type name, and **they derive it differently**:
 
-- The SDK's activity type is `prefix . (name ?? methodName)` — one concatenation, no separator
-  inserted. Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name`, and the dot is not
-  optional. The two agree on exactly two prefixes: the empty one, and one ending in a dot. **On any
-  other prefix, or a prefix computed from a constant, this rule changes no attribute and adds a
-  `durable-rector:` marker above the interface.** The SDK attribute stays in place rather than
-  rename an activity that has runs in flight. A method whose SDK `name:` is not a string literal
-  cannot get its `#[AsActivityMethod]`, so the whole contract stays as it is and the marker goes
-  above that method.
+- The SDK's activity type is `prefix . (name ?? methodName)`: one concatenation, no separator
+  inserted. Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name` when the contract name
+  is not empty, and `AsActivityMethod::$name` alone when it is empty. The rule carries over the
+  empty prefix and any literal prefix ending in a dot with something before it: `'Order.'` becomes
+  `#[AsActivity(name: 'Order')]`, `'Billing.Order.'` becomes `#[AsActivity(name: 'Billing.Order')]`,
+  and both engines name the activity `Billing.Order.charge`. **On any other prefix, this rule
+  changes no attribute and adds a `durable-rector:` marker above the interface.** That covers three
+  cases:
+  - a computed prefix (a constant, a concatenation): the rule reads a prefix only when it is a
+    string literal;
+  - a prefix that does not end in a dot (`'Order'`): the SDK type of `charge()` is `Ordercharge`,
+    and a non-empty contract name always adds a dot before the method name;
+  - the prefix `'.'` alone: the SDK type is `.charge`, and an empty contract name gives `charge`.
+
+  The SDK attribute stays in place rather than rename an activity that has runs in flight. A method
+  whose SDK `name:` is not a string literal cannot get its `#[AsActivityMethod]`, so the whole
+  contract stays as it is and the marker goes above that method.
+
+  To migrate a marked contract by hand, give each activity the old SDK type as its full Durable
+  name. An empty `#[AsActivity(name: '')]` with the full SDK type in `#[AsActivityMethod(name:)]`
+  reproduces any prefix: for the prefix `'Order'`, `#[AsActivityMethod(name: 'Ordercharge')]` on
+  `charge()` keeps the type `Ordercharge`.
 - The SDK's workflow type is `#[WorkflowMethod(name:)]` if given, Durable's `#[AsWorkflow(name:)]`;
   both are *optional*, the SDK falls back to the **interface's** short name, Durable to the
   **class's**. A class migrated without an explicit name therefore compiles, passes its tests, and
@@ -148,9 +162,10 @@ the result would read as migrated and could not run.
 It marks two more kinds of statement, for the same reason:
 
 - a reference to `ApplicationFailure`, `ServerFailure`, `TerminatedFailure` or `TimeoutFailure`
-  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call or a `::class`). Durable has
-  no counterpart for these four, so a `catch` on one of them never matches after the migration. A
-  `catch` is marked above its `try`; the `use` import is not marked.
+  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call, a `::class`, a parameter type
+  or a return type). Durable has no counterpart for these four, and once `temporal/sdk` is removed
+  the reference no longer resolves. A `catch` is marked above its `try`, a parameter or return type
+  above its method or function; the `use` import is not marked.
 - a `Promise::` call that the execution-model half does not rewrite: any method other than `all`,
   `any` and `some`, any of those three called with no argument, and `some()` called without a count.
 
