@@ -22,9 +22,11 @@ use PhpParser\Node\Expr\YieldFrom;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Param;
+use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Interface_;
+use PhpParser\NodeVisitor;
 use PHPStan\Reflection\ReflectionProvider;
 use Rector\PhpParser\Node\FileNode;
 use Rector\Rector\AbstractRector;
@@ -249,6 +251,8 @@ AFTER,
             return false;
         }
 
+        $this->dropOldVersionMarkers($method->stmts);
+
         $used = false;
         $deYielded = false;
 
@@ -289,6 +293,56 @@ AFTER,
         }
 
         return $used;
+    }
+
+    /**
+     * A statement whose getVersion() is about to become version() no longer needs the "no equivalent
+     * yet" marker an earlier run of the set wrote above it. Done before the rewrite, while the
+     * yielded call is still there to recognise.
+     *
+     * @param Stmt[] $stmts
+     */
+    private function dropOldVersionMarkers(array $stmts): void
+    {
+        $this->traverseNodesWithCallable($stmts, function (Node $node): ?Node {
+            if (!$node instanceof Stmt) {
+                return null;
+            }
+
+            $comments = UnmigratableTemporalCallRector::withoutOldVersionMarker($node->getComments());
+            if (\count($comments) !== \count($node->getComments()) && $this->yieldsMappedVersion($node)) {
+                $node->setAttribute('comments', $comments);
+            }
+
+            return null;
+        });
+    }
+
+    /**
+     * Whether this statement itself, not one nested in it, yields a getVersion() the rewrite maps.
+     */
+    private function yieldsMappedVersion(Stmt $statement): bool
+    {
+        $found = false;
+
+        $this->traverseNodesWithCallable($statement, function (Node $node) use ($statement, &$found): ?int {
+            if ($node instanceof Stmt && $node !== $statement) {
+                return NodeVisitor::DONT_TRAVERSE_CHILDREN;
+            }
+
+            if ($node instanceof Yield_
+                && $node->value instanceof StaticCall
+                && $this->isFacade($node->value, self::SDK_WORKFLOW_FACADE)
+                && 'getVersion' === $this->staticCallName($node->value)
+                && 3 === \count($node->value->args)
+            ) {
+                $found = true;
+            }
+
+            return null;
+        });
+
+        return $found;
     }
 
     /**

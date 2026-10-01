@@ -171,7 +171,8 @@ AFTER,
             return null;
         }
 
-        $comments = self::withoutOldVersionMarker($node->getComments(), $findings);
+        $reportsVersion = [] !== array_filter($findings, static fn(string $finding): bool => str_starts_with($finding, 'Workflow::getVersion() '));
+        $comments = $reportsVersion ? self::withoutOldVersionMarker($node->getComments()) : $node->getComments();
         foreach ($findings as $finding) {
             $comments[] = new Comment('// ' . self::MARKER . ' ' . $finding);
         }
@@ -189,21 +190,16 @@ AFTER,
      * its text (#914). A different finding gets its own marker next to the first one (#917).
      */
     /**
-     * Before #894, every getVersion() call carried "no equivalent yet". Where a call is still
-     * unmapped, its new marker replaces that one rather than sitting under it.
+     * Before #894, every getVersion() call carried "no equivalent yet". A call still unmapped gets
+     * its new marker in place of that one; a call rewritten to version() loses it
+     * ({@see TemporalFacadeToEnvironmentRector}).
      *
      * @param Comment[] $comments
-     * @param string[]  $findings
      *
      * @return Comment[]
      */
-    private static function withoutOldVersionMarker(array $comments, array $findings): array
+    public static function withoutOldVersionMarker(array $comments): array
     {
-        $reportsVersion = [] !== array_filter($findings, static fn(string $finding): bool => str_starts_with($finding, 'Workflow::getVersion() '));
-        if (!$reportsVersion) {
-            return $comments;
-        }
-
         return array_values(array_filter(
             $comments,
             static fn(Comment $comment): bool => !str_contains($comment->getText(), self::MARKER . ' ' . self::OLD_VERSION_MARKER),
