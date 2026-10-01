@@ -212,7 +212,7 @@ AFTER,
             }
 
             if ($node instanceof ClassConstFetch && self::isDefaultVersion($node)) {
-                $findings[] = 'Workflow::DEFAULT_VERSION has no rename here; ChangePoint::DEFAULT_VERSION is the same -1, and once temporal/sdk is removed this reference no longer resolves';
+                $findings[] = 'Workflow::DEFAULT_VERSION — ChangePoint::DEFAULT_VERSION is the same -1; once temporal/sdk is removed this reference no longer resolves';
 
                 return null;
             }
@@ -367,13 +367,13 @@ AFTER,
     {
         if (3 !== \count($call->args)) {
             return \sprintf(
-                'Workflow::getVersion() with %d arguments; version() takes a change id, a minimum and a maximum, write the call by hand',
+                'Workflow::getVersion() with %d arguments — version() takes a change id, a minimum and a maximum; write the call by hand',
                 \count($call->args),
             );
         }
 
         if (!$yielded) {
-            return 'Workflow::getVersion() not yielded; it returns a promise there and version() returns the int, rewrite the code that consumes it by hand';
+            return 'Workflow::getVersion() not yielded — it returns a promise there, and version() returns the int; rewrite the code that consumes it by hand';
         }
 
         return null;

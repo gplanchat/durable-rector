@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Gplanchat\Durable\Rector\Rector;
 
+use Gplanchat\Durable\Versioning\ChangePoint;
 use Gplanchat\Durable\WorkflowEnvironment;
 use PhpParser\Comment;
 use PhpParser\Modifiers;
@@ -11,6 +12,7 @@ use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
@@ -24,7 +26,9 @@ use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Interface_;
 use PHPStan\Reflection\ReflectionProvider;
+use Rector\PhpParser\Node\FileNode;
 use Rector\Rector\AbstractRector;
+use Rector\StaticTypeMapper\ValueObject\Type\FullyQualifiedObjectType;
 use Symplify\RuleDocGenerator\ValueObject\CodeSample\CodeSample;
 use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 
@@ -157,8 +161,10 @@ AFTER,
             $usesEnvironment = $this->rewriteBody($method) || $usesEnvironment;
         }
 
+        $renamedConstant = $this->rewriteDefaultVersion($node);
+
         if (!$usesEnvironment) {
-            return null;
+            return $renamedConstant ? $node : null;
         }
 
         $this->injectEnvironment($node);
@@ -434,6 +440,42 @@ AFTER,
             new Arg($call->args[1]->value),
             new Arg($call->args[0]->value),
         ]);
+    }
+
+    /**
+     * `Workflow::DEFAULT_VERSION` and `ChangePoint::DEFAULT_VERSION` are both `-1`, so the comparison
+     * a caller writes against it keeps its meaning.
+     *
+     * @return bool whether a reference was rewritten
+     */
+    private function rewriteDefaultVersion(Class_ $class): bool
+    {
+        $found = false;
+
+        $this->traverseNodesWithCallable($class->stmts, function (Node $node) use (&$found): ?Node {
+            if (!$node instanceof ClassConstFetch
+                || !$node->class instanceof Node\Name
+                || self::SDK_WORKFLOW_FACADE !== $node->class->toString()
+                || !$node->name instanceof Identifier
+                || 'DEFAULT_VERSION' !== $node->name->toString()
+            ) {
+                return null;
+            }
+
+            $found = true;
+
+            // Assumes the short name ChangePoint is free in the file; another class under that name would need an alias.
+            return new ClassConstFetch(new Node\Name('ChangePoint'), $node->name);
+        });
+
+        if ($found) {
+            $fileNode = $this->file->getFileNode();
+            if ($fileNode instanceof FileNode) {
+                $fileNode->getPendingImports()->addUseImport(new FullyQualifiedObjectType(ChangePoint::class));
+            }
+        }
+
+        return $found;
     }
 
     /**

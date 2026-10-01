@@ -116,12 +116,16 @@ assembles, so it becomes `timer($d)`. `yield $stub->charge()` becomes `await($st
 because a stub assembles and `await()` is the only wait. `Promise::all($p)` becomes `all(...$p)` —
 one iterable on that side, variadic on this one — and `Promise::some($p, 2)` becomes `some(2, ...$p)`.
 `yield Workflow::getVersion($changeId, $min, $max)` becomes `version($changeId, $min, $max)`, with
-no `await()`: the SDK returns a promise of the version, `version()` returns the int. `DEFAULT_VERSION`
-is `-1` on both sides, so a comparison with `Workflow::DEFAULT_VERSION` keeps its meaning; the
-constant itself is marked, because it stops resolving once `temporal/sdk` is removed, and
-`ChangePoint::DEFAULT_VERSION` replaces it. A
-`getVersion()` call with another number of arguments, or one that is not yielded where it is made,
-is left as written and marked.
+no `await()`: the SDK returns a promise of the version, `version()` returns the int. In a workflow
+class, `Workflow::DEFAULT_VERSION` becomes `ChangePoint::DEFAULT_VERSION`, with its `use` import:
+both are `-1`, so a comparison with it keeps its meaning. A reference outside a workflow class is
+marked. A `getVersion()` call with another number of arguments, or one that is not yielded where it
+is made, is left as written and marked.
+
+One runtime case differs. A run that went past the point before the call existed and has no
+recorded work after it, for example one waiting only on a condition or a signal, gets
+`$maxSupported` from `version()`, where the SDK returns `DEFAULT_VERSION`. The docblock of
+`ExecutionContext::version()` describes this limit.
 
 **Two arities it refuses.** The SDK's `Workflow::await(...$conditions)` is variadic and settles on
 the first condition; Durable's second parameter is a **deadline**. One condition maps —
