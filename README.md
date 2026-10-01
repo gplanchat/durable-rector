@@ -66,14 +66,26 @@ and wants its `cache:clear`), is written version by version, at the root of the 
 
 Both engines derive a type name, and **they derive it differently**:
 
-- The SDK's activity type is `prefix . (name ?? methodName)` — one concatenation, no separator
-  inserted. Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name`, and the dot is not
-  optional. The two agree on exactly two prefixes: the empty one, and one ending in a dot. **On any
-  other prefix, or a prefix computed from a constant, this rule changes no attribute and adds a
-  `durable-rector:` marker above the interface.** The SDK attribute stays in place rather than
-  rename an activity that has runs in flight. A method whose SDK `name:` is not a string literal
-  cannot get its `#[AsActivityMethod]`, so the whole contract stays as it is and the marker goes
-  above that method.
+- The SDK's activity type is `prefix . (name ?? methodName)`: one concatenation, no separator
+  inserted. Durable's is `AsActivity::$name . '.' . AsActivityMethod::$name` when the contract name
+  is not empty, and `AsActivityMethod::$name` alone when it is empty. The rule carries over two
+  prefixes: the empty one, and a single segment ending in a dot (`'Order.'` becomes
+  `#[AsActivity(name: 'Order')]`). **On any other prefix, this rule changes no attribute and adds a
+  `durable-rector:` marker above the interface.** That covers three cases:
+  - a computed prefix (a constant, a concatenation): the rule does not guess its value;
+  - a prefix that does not end in a dot (`'Order'`): the SDK type of `charge()` is `Ordercharge`,
+    and a non-empty contract name always adds a dot before the method name;
+  - a prefix with another dot before the last one (`'Billing.Order.'`): both engines would name the
+    activity `Billing.Order.charge`, and the rule declines it out of caution.
+
+  The SDK attribute stays in place rather than rename an activity that has runs in flight. A method
+  whose SDK `name:` is not a string literal cannot get its `#[AsActivityMethod]`, so the whole
+  contract stays as it is and the marker goes above that method.
+
+  To migrate a marked contract by hand, give each activity the old SDK type as its full Durable
+  name. An empty `#[AsActivity(name: '')]` with the full SDK type in `#[AsActivityMethod(name:)]`
+  reproduces any prefix: for the prefix `'Order'`, `#[AsActivityMethod(name: 'Ordercharge')]` on
+  `charge()` keeps the type `Ordercharge`.
 - The SDK's workflow type is `#[WorkflowMethod(name:)]` if given, Durable's `#[AsWorkflow(name:)]`;
   both are *optional*, the SDK falls back to the **interface's** short name, Durable to the
   **class's**. A class migrated without an explicit name therefore compiles, passes its tests, and
