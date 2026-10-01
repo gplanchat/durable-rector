@@ -134,8 +134,9 @@ AFTER,
     }
 
     /**
-     * Durable joins with a dot it always inserts; the SDK inserts nothing. Only an empty prefix and
-     * a dot-terminated one survive the round trip unchanged.
+     * The SDK concatenates prefix and method name; Durable inserts a dot between a non-empty contract
+     * name and the method name, and uses the method name alone when the contract name is empty. Only
+     * an empty prefix and a dot-terminated one with something before the dot keep their names.
      */
     private function contractNameForPrefix(string $prefix): ?string
     {
@@ -149,7 +150,8 @@ AFTER,
 
         $name = substr($prefix, 0, -1);
 
-        return str_contains($name, '.') ? null : $name;
+        // A lone '.' would become an empty contract name, and the dot with it would be lost.
+        return '' === $name ? null : $name;
     }
 
     /**
