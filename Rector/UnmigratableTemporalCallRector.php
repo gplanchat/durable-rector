@@ -161,15 +161,10 @@ AFTER,
             $findings = $this->findings($node);
         }
 
+        // Already reported: a second pass adds no second comment for the same finding.
+        $findings = array_filter($findings, static fn(string $finding): bool => !self::isMarked($node, $finding));
         if ([] === $findings) {
             return null;
-        }
-
-        foreach ($node->getComments() as $comment) {
-            if (str_contains($comment->getText(), self::MARKER)) {
-                // Already reported. A second pass must not stack a second comment.
-                return null;
-            }
         }
 
         $comments = $node->getComments();
@@ -180,6 +175,27 @@ AFTER,
         $node->setAttribute('comments', $comments);
 
         return $node;
+    }
+
+    /**
+     * Whether a `durable-rector:` comment on the node already reports this finding.
+     *
+     * Two markers report the same finding when they match up to the first ` — `, the part that names
+     * the construct. The explanation after it can differ: a marker written by an earlier run keeps
+     * its text (#914). A different finding gets its own marker next to the first one (#917).
+     */
+    public static function isMarked(Node $node, string $finding): bool
+    {
+        $separator = strpos($finding, ' — ');
+        $needle = self::MARKER . ' ' . (false === $separator ? $finding : substr($finding, 0, $separator + \strlen(' — ')));
+
+        foreach ($node->getComments() as $comment) {
+            if (str_contains($comment->getText(), $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
