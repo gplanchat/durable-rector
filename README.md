@@ -82,7 +82,9 @@ Both engines derive a type name, and **they derive it differently**:
 
   The SDK attribute stays in place rather than rename an activity that has runs in flight. A method
   whose SDK `name:` is not a string literal cannot get its `#[AsActivityMethod]`, so the whole
-  contract stays as it is and the marker goes above that method.
+  contract stays as it is and the marker goes above that method. When that method also names one of
+  the four SDK failures without a Durable counterpart in a parameter or return type, the failure
+  marker sits next to it.
 
   To migrate a marked contract by hand, give each activity the old SDK type as its full Durable
   name. An empty `#[AsActivity(name: '')]` with the full SDK type in `#[AsActivityMethod(name:)]`
@@ -173,12 +175,18 @@ the result would read as migrated and could not run.
 It marks two more kinds of statement, for the same reason:
 
 - a reference to `ApplicationFailure`, `ServerFailure`, `TerminatedFailure` or `TimeoutFailure`
-  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call, a `::class`, a parameter type
-  or a return type). Durable has no counterpart for these four, and once `temporal/sdk` is removed
-  the reference no longer resolves. A `catch` is marked above its `try`, a parameter or return type
-  above its method or function; the `use` import is not marked.
+  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call, a `::class`, a parameter type,
+  a return type, or the `extends` of a named class). Durable has no counterpart for these four, and
+  once `temporal/sdk` is removed the reference no longer resolves. A `catch` is marked above its
+  `try`, a parameter or return type above its method or function, an `extends` above its class; the
+  `use` import is not marked.
 - a `Promise::` call that the execution-model half does not rewrite: any method other than `all`,
   `any` and `some`, any of those three called with no argument, and `some()` called without a count.
+
+A statement or a method can carry several markers, one per finding. A re-run adds a marker only
+for a finding not marked yet. Two markers count as the same finding when their text matches up to
+the first ` — `, so a failure marker written by an earlier run with the older explanation ("a catch
+on it never matches after migration") gets no second one.
 
 Run against [`temporalio/samples-php`](https://github.com/temporalio/samples-php), the whole set
 changes **58 files** — and it reports
@@ -211,7 +219,9 @@ These constructs carry no `durable-rector:` comment after a run. Check them by h
 - the client side: code that starts, signals or queries a workflow through the SDK client;
 - the SDK workflow attribute on a class rather than on an interface: no `#[AsWorkflow]` is
   written, because both rules read that attribute only on the interfaces a class implements;
-- an interceptor: no rule matches it.
+- an interceptor: no rule matches it;
+- an anonymous class that extends `ApplicationFailure`, `ServerFailure`, `TerminatedFailure` or
+  `TimeoutFailure`, such as `throw new class extends ApplicationFailure {}`.
 
 ## Development
 
