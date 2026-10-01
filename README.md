@@ -148,9 +148,9 @@ the result would read as migrated and could not run.
 It marks two more kinds of statement, for the same reason:
 
 - a reference to `ApplicationFailure`, `ServerFailure`, `TerminatedFailure` or `TimeoutFailure`
-  (in a `catch`, a `new`, a `throw` or an `instanceof`). Durable has no counterpart for these four,
-  so a `catch` on one of them never matches after the migration. A `catch` is marked above its
-  `try`; the `use` import is not marked.
+  (in a `catch`, a `new`, a `throw`, an `instanceof`, a static call or a `::class`). Durable has
+  no counterpart for these four, so a `catch` on one of them never matches after the migration. A
+  `catch` is marked above its `try`; the `use` import is not marked.
 - a `Promise::` call that the execution-model half does not rewrite: any method other than `all`,
   `any` and `some`, any of those three called with no argument, and `some()` called without a count.
 
