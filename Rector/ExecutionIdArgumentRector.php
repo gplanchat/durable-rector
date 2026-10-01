@@ -76,6 +76,8 @@ final class ExecutionIdArgumentRector extends AbstractRector
         'Gplanchat\Bridge\Temporal\Worker\TemporalExecutionHistory' => ['waitJournal' => [0]],
         'Gplanchat\Durable\Transport\AwaitedFact' => ['isJournalledIn' => [1]],
         'Gplanchat\Durable\ExecutionEngine' => ['start' => [0], 'resume' => [0]],
+        'Gplanchat\Durable\InMemoryWorkflowRunner' => ['run' => [0]],
+        'Gplanchat\Durable\Exception\ContinueAsNewRequested' => ['withNextExecutionId' => [0]],
     ];
 
     public function getRuleDefinition(): RuleDefinition
