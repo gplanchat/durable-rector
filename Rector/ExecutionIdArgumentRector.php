@@ -75,6 +75,7 @@ final class ExecutionIdArgumentRector extends AbstractRector
         'Gplanchat\Durable\Store\FencedEventStoreInterface' => ['claimPass' => [0]],
         'Gplanchat\Bridge\Temporal\Worker\TemporalExecutionHistory' => ['waitJournal' => [0]],
         'Gplanchat\Durable\Transport\AwaitedFact' => ['isJournalledIn' => [1]],
+        'Gplanchat\Durable\ExecutionEngine' => ['start' => [0], 'resume' => [0]],
     ];
 
     public function getRuleDefinition(): RuleDefinition

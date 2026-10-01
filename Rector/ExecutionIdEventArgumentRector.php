@@ -30,8 +30,8 @@ use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 final class ExecutionIdEventArgumentRector extends AbstractRector
 {
     /**
-     * Class => its static factories whose first argument is the execution id: the events' own,
-     * and the two helpers that build a failure event.
+     * Class => its static factories that take an execution id: the events' own, the two helpers
+     * that build a failure event, and the one that opens a pass.
      */
     public const FACTORIES = [
         'Gplanchat\Durable\Event\ActivityCatastrophicFailure' => ['fromStoredPayload', 'forThrowable'],
@@ -45,6 +45,7 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
         'Gplanchat\Durable\Failure\WorkflowFailureClassifier' => ['classify'],
         'Gplanchat\Durable\Failure\ActivityFailureEventFactory' => ['fromActivityThrowable'],
         'Gplanchat\Bridge\Temporal\Store\TemporalEventConverter' => ['forHistory'],
+        'Gplanchat\Durable\Store\PassEventStore' => ['open'],
     ];
 
     /** Classes other than events whose constructor takes the execution id. */
@@ -53,6 +54,7 @@ final class ExecutionIdEventArgumentRector extends AbstractRector
         'Gplanchat\Durable\Store\EventStoreCommandBuffer',
         'Gplanchat\Bridge\Temporal\Store\TemporalEventConverter',
         'Gplanchat\Bridge\Temporal\Worker\TemporalWorkflowCommandBuffer',
+        'Gplanchat\Durable\Store\EventStoreHistorySource',
     ];
 
     public function getRuleDefinition(): RuleDefinition
