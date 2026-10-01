@@ -153,9 +153,9 @@ AFTER,
             return null;
         }
 
-        // A method or a function reports only its parameter types; its body reports for itself.
+        // A method or a function reports only its signature types; its body reports for itself.
         $findings = $node instanceof ClassMethod || $node instanceof Function_
-            ? $this->parameterFindings($node)
+            ? $this->signatureFindings($node)
             : $this->findings($node);
         if ([] === $findings) {
             return null;
@@ -265,18 +265,17 @@ AFTER,
     }
 
     /**
-     * @return string[] one line per failure named in a parameter type, without duplicates
+     * @return string[] one line per failure named in a parameter or return type, without duplicates
      */
-    private function parameterFindings(ClassMethod|Function_ $function): array
+    private function signatureFindings(ClassMethod|Function_ $function): array
     {
-        $findings = [];
-        foreach ($function->params as $param) {
-            if (null === $param->type) {
-                continue;
-            }
+        $types = array_map(static fn(Node\Param $param): ?Node => $param->type, $function->params);
+        $types[] = $function->returnType;
 
+        $findings = [];
+        foreach (array_filter($types) as $type) {
             // Nullable, union and intersection types hold their names as children.
-            $this->traverseNodesWithCallable($param->type, static function (Node $node) use (&$findings): null {
+            $this->traverseNodesWithCallable($type, static function (Node $node) use (&$findings): null {
                 if ($node instanceof Node\Name) {
                     $findings[] = self::failureFinding($node);
                 }
@@ -295,7 +294,7 @@ AFTER,
         }
 
         return \sprintf(
-            '%s has no Durable counterpart — a catch on it never matches after migration; decide by hand',
+            '%s has no Durable counterpart — once temporal/sdk is removed this reference no longer resolves; decide by hand',
             $name->getLast(),
         );
     }
