@@ -72,11 +72,13 @@ Both engines derive a type name, and **they derive it differently**:
   prefixes: the empty one, and a single segment ending in a dot (`'Order.'` becomes
   `#[AsActivity(name: 'Order')]`). **On any other prefix, this rule changes no attribute and adds a
   `durable-rector:` marker above the interface.** That covers three cases:
-  - a computed prefix (a constant, a concatenation): the rule does not guess its value;
+  - a computed prefix (a constant, a concatenation): the rule reads a prefix only when it is a
+    string literal;
   - a prefix that does not end in a dot (`'Order'`): the SDK type of `charge()` is `Ordercharge`,
     and a non-empty contract name always adds a dot before the method name;
   - a prefix with another dot before the last one (`'Billing.Order.'`): both engines would name the
-    activity `Billing.Order.charge`, and the rule declines it out of caution.
+    activity `Billing.Order.charge`, but the rule converts a single segment only, so it marks this
+    prefix too.
 
   The SDK attribute stays in place rather than rename an activity that has runs in flight. A method
   whose SDK `name:` is not a string literal cannot get its `#[AsActivityMethod]`, so the whole
