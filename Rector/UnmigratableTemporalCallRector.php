@@ -10,6 +10,7 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Catch_;
+use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Finally_;
@@ -142,30 +143,28 @@ AFTER,
     {
         \assert($node instanceof Stmt);
 
-        if ($node instanceof ClassLike || $node instanceof Catch_ || $node instanceof Finally_) {
+        if ($node instanceof Class_ && null !== $node->name && null !== $node->extends) {
+            // A class reports only the failure it extends; its members report for themselves. An
+            // anonymous class is marked above the statement that encloses it.
+            $findings = array_filter([self::failureFinding($node->extends)]);
+        } elseif ($node instanceof ClassLike || $node instanceof Catch_ || $node instanceof Finally_) {
             // Containers: their statements report for themselves, and marking both would say it twice.
             // A catch clause reports on its `try`, the statement a comment can sit above.
             return null;
-        }
-
-        if ($node instanceof Use_ || $node instanceof GroupUse) {
+        } elseif ($node instanceof Use_ || $node instanceof GroupUse) {
             // An import is not a use: the statements that reference the class carry the marker.
             return null;
+        } elseif ($node instanceof ClassMethod || $node instanceof Function_) {
+            // A method or a function reports only its signature types; its body reports for itself.
+            $findings = $this->signatureFindings($node);
+        } else {
+            $findings = $this->findings($node);
         }
 
-        // A method or a function reports only its signature types; its body reports for itself.
-        $findings = $node instanceof ClassMethod || $node instanceof Function_
-            ? $this->signatureFindings($node)
-            : $this->findings($node);
+        // Already reported: a second pass adds no second comment for the same finding.
+        $findings = array_filter($findings, static fn(string $finding): bool => !self::isMarked($node, $finding));
         if ([] === $findings) {
             return null;
-        }
-
-        foreach ($node->getComments() as $comment) {
-            if (str_contains($comment->getText(), self::MARKER)) {
-                // Already reported. A second pass must not stack a second comment.
-                return null;
-            }
         }
 
         $comments = $node->getComments();
@@ -176,6 +175,27 @@ AFTER,
         $node->setAttribute('comments', $comments);
 
         return $node;
+    }
+
+    /**
+     * Whether a `durable-rector:` comment on the node already reports this finding.
+     *
+     * Two markers report the same finding when they match up to the first ` — `, the part that names
+     * the construct. The explanation after it can differ: a marker written by an earlier run keeps
+     * its text (#914). A different finding gets its own marker next to the first one (#917).
+     */
+    public static function isMarked(Node $node, string $finding): bool
+    {
+        $separator = strpos($finding, ' — ');
+        $needle = self::MARKER . ' ' . (false === $separator ? $finding : substr($finding, 0, $separator + \strlen(' — ')));
+
+        foreach ($node->getComments() as $comment) {
+            if (str_contains($comment->getText(), $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -194,6 +214,16 @@ AFTER,
         }
 
         $this->traverseNodesWithCallable($statement, static function (Node $node) use ($statement, &$findings): ?int {
+            if ($node instanceof New_ && $node->class instanceof Class_) {
+                // An anonymous class: the enclosing statement reports its `extends`; its members, being
+                // statements, report for themselves.
+                if (null !== $node->class->extends) {
+                    $findings[] = self::failureFinding($node->class->extends);
+                }
+
+                return null;
+            }
+
             if ($node instanceof Stmt && $node !== $statement) {
                 // A nested statement reports on its own line; stopping here is what keeps the
                 // marker on the innermost statement rather than on every block above it.
